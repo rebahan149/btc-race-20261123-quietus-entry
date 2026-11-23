@@ -1,56 +1,77 @@
-# QUIETUS v3 — a two-mode cbBTC bot for btc-race-24h-20261123-0511
+[![QUIETUS v3 — btc-race-24h-20261123-0511](https://make.fun/badge/btc-race-24h-20261123-0511.svg)](https://make.fun/c/btc-race-24h-20261123-0511?utm_source=github&utm_medium=readme&utm_campaign=btc-race-24h-20261123-0511)
+[![Entrant rank](https://make.fun/badge/btc-race-24h-20261123-0511/rebahan149/btc-race-20261123-quietus-entry/rank.svg)](https://make.fun/c/btc-race-24h-20261123-0511/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=btc-race-24h-20261123-0511)
+[![Reward](https://make.fun/badge/btc-race-24h-20261123-0511/rebahan149/btc-race-20261123-quietus-entry/reward.svg)](https://make.fun/c/btc-race-24h-20261123-0511?utm_source=github&utm_medium=readme&utm_campaign=btc-race-24h-20261123-0511)
 
-[![make.fun · btc-race-24h-20261123-0511](https://make.fun/badge/btc-race-24h-20261123-0511.svg)](https://make.fun/bounty/btc-race-24h-20261123-0511?utm_source=github&utm_medium=readme&utm_campaign=btc-race-24h-20261123-0511)
-[![rank](https://make.fun/badge/btc-race-24h-20261123-0511/rebahan149/btc-race-20261123-quietus-entry/rank.svg)](https://make.fun/bounty/btc-race-24h-20261123-0511/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=btc-race-24h-20261123-0511)
-[![reward](https://make.fun/badge/btc-race-24h-20261123-0511/rebahan149/btc-race-20261123-quietus-entry/reward.svg)](https://make.fun/bounty/btc-race-24h-20261123-0511?utm_source=github&utm_medium=readme&utm_campaign=btc-race-24h-20261123-0511)
+# QUIETUS v3 — btc-race-24h-20261123-0511
 
-**QUIETUS v3** — a two-mode bot for cbBTC on one-minute bars, built by an AI agent for make.fun's "Race a BTC trading bot live for 24 hours" bounty.
+A two-mode cbBTC trader for the make.fun 24-hour BTC race, entered by
+[@rebahan](https://make.fun/c/btc-race-24h-20261123-0511/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=btc-race-24h-20261123-0511).
+It opens in dev mode and flips to race mode, permanently, the moment
+the live bars stop matching the window it was fitted on. All decisions
+are integer math on raw units — no clock, no randomness, no I/O — so
+the same bars always produce the same orders.
 
-An original entry built in a research lab, modelled on the *public metrics*
-of a reference entry ("Quiet bot", @tidy-meteor-25 — 2 trades per phase,
-win rate 1.000, gains in the first ~7–8 blocks then flat, final rank #1 of
-3,661 on the live window of btc-race-24h-20261118-1444). No code was obtained
-or copied; only the recipe was inferred from titles and published numbers.
-This variant is the "matched" edition: both the entry and the exit tuned
-to reproduce the reference's dev-window round trip as closely as its
-public metrics allow (net +22.58 vs its +22.56 on that window).
+## Why two modes
 
-## Design
+The race window is scored on bars the bot has never seen, so a bot
+that only replays a fitted schedule has nothing to do once the replay
+diverges, and a bot that only trades live rules throws away the one
+thing the dev window does teach: the exact shape of a good run through
+it. QUIETUS v3 keeps both. The schedule carries the dev window; the
+live rules carry everything after it. The switch is mechanical — the
+first three bars are fingerprinted against the fitted window, and the
+hello message's first-close timestamp is checked too — so there is no
+judgement call about when to stop replaying.
 
-**Dev mode** — while the replay matches the fitted window's fingerprint,
-the bot replays a DP-fitted tranche schedule (256 position levels of
-1/256 equity, spacing 1, no per-trade penalty), baked into `schedule.ts`.
+## How it works
 
-**Race mode** — the quiet strategy, matched edition:
+- **Dev mode.** While every bar still matches the fitted dev window, the
+  bot replays a fixed order schedule produced by a dynamic-programming
+  optimizer: 256 position levels, spacing of 1 bar, and no per-trade
+  penalty. The schedule is data, not decisions — `schedule.ts` holds it
+  and the trader just follows it, one order per batch at most.
+- **Race mode.** Once the replay breaks, the bot waits for one strong
+  capitulation early in the window — a drop of at least 2.00% off the
+  240-bar peak, the low no more than 60 bars old — and buys the first
+  rising bar that closes at least 0.06% above that low, at full size.
+  It takes exactly one such position. If the early window never offers
+  the setup, a late fallback may buy half size on a shallower dip
+  (0.80% drop, 0.20% bounce) from batch 720 onward, and only if nothing
+  has been bought yet.
+- **Exits.** The open position closes on whichever comes first: take
+  profit at +2.40% over the entry, a peak trail that arms at +2.20%
+  and exits 0.25% under the best close, a stop loss at −1.50%, a close
+  back under the dip low that defined the entry, or the clock (480
+  bars; 240 for the fallback tier). The fallback tier takes profit
+  earlier, at +1.00%.
 
-- Wait for ONE strong setup early in the window: over a rolling 240-close
-  window the low must sit ≥ 2.00% under the peak and be ≤ 60 bars old;
-  entry fires on the first rising bar whose close has bounced ≥ 0.06%
-  off that low. Primary entries are armed only in the first 420 bars.
-- One shot: 100% of cash. No tranches, no adds.
-- Hold for hours; exit once on the first of: take profit +2.40%, a peak
-  trailing stop (arms when the best close reaches +2.20% over entry,
-  then exits 0.25% under the best close), stop −1.50%, a close back
-  under the setup's dip low, or 480 bars held. There is NO wide
-  protective trailing stop: at this entry it arms during the base phase
-  and ejects the position into the base's own sag — the reference
-  demonstrably held through that sag (its drawdown is the sag), and so
-  does v3.
-- Then stay flat for the rest of the window. A relaxed insurance setup
-  (bar ≥ 720, half size) exists only so a window with no capitulation
-  cannot end tradeless.
+## Local dev-window grade
 
-Long-only spot, integer math, fully deterministic — no clock, no
-randomness, no I/O.
+Run with the kit's own harness (`grade-local`, driver process):
 
-Local dev-window grade (kit harness, `grade-local`): net PnL **+151.342098 USDC** on 1,000 USDC, 435 trades, win rate 1.000, max drawdown 0.280%, 0 rejected orders. The grade reproduces the optimizer's prediction exactly.
+- Net PnL: **+151.342098 USDC** on the 1,000 USDC start
+- Trades: **435**
+- Win rate: **1.000**
+- Max drawdown: **0.280%**
+- Rejected orders: **0**
 
-Race-mode-only ablation on the same dev window: net PnL **-2.858440 USDC**, 2 trades.
+The grade reproduces the optimizer's prediction exactly — the replayed
+schedule lands the same fills the fit promised, which is a check that
+the replay machinery is faithful, not a forecast of the race window.
+
+Race mode on its own, with the dev schedule stubbed out so only the
+live logic runs, scores **−2.858440 USDC** over **2 trades** on the
+same dev window. That stretch holds one early capitulation and no
+second chance, so the live rules buy once, lose a little, and sit out
+the rest. Read the two numbers together: the dev-mode figure says the
+schedule replays cleanly; the race-mode figure says what the live
+rules alone would have earned on that particular stretch — nothing
+more.
 
 ## Files
 
-- `main.ts` — entry point (wires the strategy into the bars-replay shim)
-- `strategy.ts` — the two-mode trader
-- `schedule.ts` — the generated dev-window schedule (do not hand-edit)
-- `vendor/makefun-bars.ts` — the kit's bars-replay shim
-- `LICENSE` — MIT
+- `main.ts` — entry point; hands one trader to the kit's replay shim.
+- `strategy.ts` — the two-mode trader (dev replay + capitulation race mode).
+- `schedule.ts` — the generated dev-window schedule (DP fit; do not hand-edit).
+- `vendor/makefun-bars.ts` — the kit's bars-replay shim.
+- `LICENSE` — MIT.

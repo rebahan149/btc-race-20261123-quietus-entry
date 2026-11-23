@@ -1,8 +1,6 @@
-// QUIETUS — entry point: wire the two-mode trader into the bars-replay shim.
-//
-// The strategy lives in strategy.ts; this file only connects it to runBars so
-// the harness drives it one batch at a time. Diagnostics, if any, go to
-// stderr — stdout carries replies only.
+// Entry point: one trader, handed to the kit's bars-replay shim. The
+// shim owns stdout, so this file prints nothing; anything worth noting
+// would go to stderr.
 
 import { runBars } from './vendor/makefun-bars.ts';
 import { Quietus } from './strategy.ts';
